@@ -1,3 +1,5 @@
+https://staging.hipp.health/oauth/callback?code=4%2F0ASVgi3LqcxdgWfrL_HkQ7SSKg4nf_6hL62rr5IejBHxBWyRbw7Wzr_Q0G6XRKQXaHkT1mg&scope=email+profile+openid+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo.profile+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo.email&authuser=0&hd=ext.hipp.health&prompt=consent
+
 getAccessToken.ts
 ----
 import { OAuth2Client } from "google-auth-library";
