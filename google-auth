@@ -1,3 +1,60 @@
+import fetch from 'node-fetch';
+import { browser } from '@wdio/globals';
+
+async function getWorkOSSession(): Promise<string> {
+    const code = 'your_auth_code'; // Replace with the actual authorization code
+    const clientId = process.env.WORKOS_CLIENT_ID;
+    const cookiePassword = process.env.WORKOS_COOKIE_PASSWORD;
+
+    if (!code) {
+        throw new Error('No authorization code provided');
+    }
+
+    try {
+        const response = await fetch('https://api.workos.com/user_management/authenticate_with_code', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${process.env.WORKOS_API_KEY}`
+            },
+            body: JSON.stringify({
+                clientId,
+                code,
+                session: {
+                    sealSession: true,
+                    cookiePassword
+                }
+            })
+        });
+
+        const data = await response.json();
+
+        if (!data.sealedSession) {
+            throw new Error('Failed to retrieve sealed session');
+        }
+
+        return data.sealedSession;
+    } catch (error) {
+        console.error('Error authenticating with WorkOS:', error);
+        throw error;
+    }
+}
+
+before(async () => {
+    const sealedSession = await getWorkOSSession();
+
+    await browser.url('https://staging.hipp.health/');
+    await browser.setCookies([
+        { name: 'wos-session', value: sealedSession, domain: '.hipp.health', httpOnly: true, secure: true, sameSite: 'Lax' }
+    ]);
+    await browser.refresh();
+});
+
+
+
+---------
+
+
 https://staging.hipp.health/oauth/callback?code=4%2F0ASVgi3LqcxdgWfrL_HkQ7SSKg4nf_6hL62rr5IejBHxBWyRbw7Wzr_Q0G6XRKQXaHkT1mg&scope=email+profile+openid+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo.profile+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo.email&authuser=0&hd=ext.hipp.health&prompt=consent
 
 getAccessToken.ts
