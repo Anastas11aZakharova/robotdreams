@@ -1,128 +1,108 @@
 getAccessToken.ts
 ----
 import { OAuth2Client } from "google-auth-library";
-import * as fs from "fs";
-import * as readline from "readline";
+import fs from "fs";
+import path from "path";
 
-const CREDENTIALS_PATH = "credentials.json";
-const TOKEN_PATH = "token.json";
+const CREDENTIALS_PATH = path.join(__dirname, "credentials.json");
+const TOKEN_PATH = path.join(__dirname, "token.json");
+
+// Load client credentials
+const credentials = JSON.parse(fs.readFileSync(CREDENTIALS_PATH, "utf-8"));
+const { client_id, client_secret, redirect_uris } = credentials.web; // or credentials.installed
+
+const oAuth2Client = new OAuth2Client(client_id, client_secret, redirect_uris[0]);
 
 async function getAccessToken() {
-    // Load client credentials
-    const credentials = JSON.parse(fs.readFileSync(CREDENTIALS_PATH, "utf-8"));
-    const { client_id, client_secret, redirect_uris } = credentials.installed;
-
-    // Create OAuth2 client
-    const oAuth2Client = new OAuth2Client(client_id, client_secret, redirect_uris[0]);
-
-    // Generate authentication URL
     const authUrl = oAuth2Client.generateAuthUrl({
         access_type: "offline",
-        scope: ["https://www.googleapis.com/auth/userinfo.email"],
+        scope: ["https://www.googleapis.com/auth/userinfo.profile", "https://www.googleapis.com/auth/userinfo.email"],
+        prompt: "consent",
     });
 
-    console.log("Authorize this app by visiting this URL:\n", authUrl);
-
-    // Get the authorization code from the user
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-    rl.question("Enter the code from that page here: ", async (code: string) => {
-        rl.close();
-        try {
-            const { tokens } = await oAuth2Client.getToken(code);
-            fs.writeFileSync(TOKEN_PATH, JSON.stringify(tokens, null, 2));
-            console.log("Token stored successfully.");
-        } catch (error) {
-            console.error("Error retrieving access token:", error);
-        }
-    });
+    console.log("Authorize this app by visiting this URL:", authUrl);
 }
 
-getAccessToken().catch(console.error);
-
+getAccessToken();
 
 
 ----------
 loginWithOAuth.ts
 
 
-import { remote, Browser } from "webdriverio";
-import * as fs from "fs";
+import { OAuth2Client } from "google-auth-library";
+import fs from "fs";
+import path from "path";
+import readline from "readline";
 
-const TOKEN_PATH = "token.json";
+const CREDENTIALS_PATH = path.join(__dirname, "credentials.json");
+const TOKEN_PATH = path.join(__dirname, "token.json");
 
-async function loginWithOAuthToken() {
-    if (!fs.existsSync(TOKEN_PATH)) {
-        console.error("Error: No token.json file found. Run getAccessToken.ts first.");
-        return;
-    }
+const credentials = JSON.parse(fs.readFileSync(CREDENTIALS_PATH, "utf-8"));
+const { client_id, client_secret, redirect_uris } = credentials.web; // or credentials.installed
 
-    // Load OAuth token
-    const tokenData = JSON.parse(fs.readFileSync(TOKEN_PATH, "utf-8"));
-    console.log("Using OAuth Token:", tokenData.access_token);
+const oAuth2Client = new OAuth2Client(client_id, client_secret, redirect_uris[0]);
 
-    // Start WebDriverIO session
-    const browser: Browser<"async"> = await remote({
-        capabilities: { browserName: "chrome" }
+async function loginWithOAuth() {
+    const authUrl = oAuth2Client.generateAuthUrl({
+        access_type: "offline",
+        scope: ["https://www.googleapis.com/auth/userinfo.profile", "https://www.googleapis.com/auth/userinfo.email"],
+        prompt: "consent",
     });
 
-    await browser.url("https://accounts.google.com");
+    console.log("Authorize this app by visiting this URL:", authUrl);
 
-    // Set OAuth token as a cookie
-    await browser.setCookies([
-        {
-            name: "OAuthAccessToken",
-            value: tokenData.access_token,
-            domain: ".google.com",
-            path: "/"
+    const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout,
+    });
+
+    rl.question("Enter the code from that page here: ", async (code) => {
+        rl.close();
+        try {
+            const { tokens } = await oAuth2Client.getToken(code);
+            fs.writeFileSync(TOKEN_PATH, JSON.stringify(tokens, null, 2));
+            console.log("Token stored to", TOKEN_PATH);
+        } catch (error) {
+            console.error("Error retrieving access token:", error);
         }
-    ]);
-
-    await browser.refresh();
-    console.log("Login successful using OAuth token!");
-
-    await browser.deleteSession();
+    });
 }
 
-loginWithOAuthToken().catch(console.error);
+loginWithOAuth();
 
 
 ----
 refreshToken.ts
 
 import { OAuth2Client } from "google-auth-library";
-import * as fs from "fs";
+import fs from "fs";
+import path from "path";
 
-const CREDENTIALS_PATH = "credentials.json";
-const TOKEN_PATH = "token.json";
+const CREDENTIALS_PATH = path.join(__dirname, "credentials.json");
+const TOKEN_PATH = path.join(__dirname, "token.json");
 
-async function refreshAccessToken() {
-    if (!fs.existsSync(CREDENTIALS_PATH) || !fs.existsSync(TOKEN_PATH)) {
-        console.error("Error: Missing credentials.json or token.json.");
+const credentials = JSON.parse(fs.readFileSync(CREDENTIALS_PATH, "utf-8"));
+const { client_id, client_secret, redirect_uris } = credentials.web; // or credentials.installed
+
+const oAuth2Client = new OAuth2Client(client_id, client_secret, redirect_uris[0]);
+
+async function refreshToken() {
+    if (!fs.existsSync(TOKEN_PATH)) {
+        console.error("No token found. Run loginWithOAuth.ts first.");
         return;
     }
 
-    const credentials = JSON.parse(fs.readFileSync(CREDENTIALS_PATH, "utf-8"));
     const tokenData = JSON.parse(fs.readFileSync(TOKEN_PATH, "utf-8"));
-
-    const { client_id, client_secret } = credentials.installed;
-    const oAuth2Client = new OAuth2Client(client_id, client_secret, "urn:ietf:wg:oauth:2.0:oob");
-
     oAuth2Client.setCredentials(tokenData);
 
     try {
-        if (Date.now() >= tokenData.expiry_date) {
-            console.log("Access token expired. Refreshing...");
-            const { credentials: newToken } = await oAuth2Client.refreshAccessToken();
-            tokenData.access_token = newToken.access_token!;
-            tokenData.expiry_date = newToken.expiry_date!;
-            fs.writeFileSync(TOKEN_PATH, JSON.stringify(tokenData, null, 2));
-            console.log("Token refreshed and saved.");
-        } else {
-            console.log("Access token is still valid.");
-        }
+        const newTokens = await oAuth2Client.refreshAccessToken();
+        fs.writeFileSync(TOKEN_PATH, JSON.stringify(newTokens.credentials, null, 2));
+        console.log("Token refreshed and saved.");
     } catch (error) {
         console.error("Error refreshing access token:", error);
     }
 }
 
-refreshAccessToken().catch(console.error);
+refreshToken();
