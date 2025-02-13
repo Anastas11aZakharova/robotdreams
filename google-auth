@@ -1,3 +1,58 @@
+name: WDIO Tests
+
+on:
+  workflow_dispatch:  # ✅ Manual trigger
+  schedule:
+    - cron: "0 0 * * *"  # ✅ Runs nightly at midnight UTC
+
+jobs:
+  test:
+    name: Run WDIO Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run WDIO Tests with Environment Variables
+        run: |
+          BASE_URL=${{ vars.BASE_URL }} \
+          WORKOS_CLIENT_ID=${{ secrets.WORKOS_CLIENT_ID }} \
+          WORKOS_COOKIE_PASSWORD=${{ secrets.WORKOS_COOKIE_PASSWORD }} \
+          npx wdio run wdio.conf.ts
+
+      - name: Upload Allure Report as Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-report
+          path: allure-report      
+
+      - name: Deploy report to GitHub Pages
+        if: always()
+        uses: peaceiris/actions-gh-pages@v2
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: allure-report
+          keep_files: true  # ✅ Preserves history of previous reports
+
+      - name: Cleanup workspace
+        if: always()
+        run: rm -rf .env allure-report
+v
+
+
+________
+
 import fetch from 'node-fetch';
 import { browser } from '@wdio/globals';
 
