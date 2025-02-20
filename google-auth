@@ -1,3 +1,46 @@
+    if (fs.existsSync(resultsFilePath)) {
+        const rawData = fs.readFileSync(resultsFilePath, "utf-8");
+        if (rawData.trim()) {
+            testResults = JSON.parse(rawData);
+        }
+    }
+
+    testResults.forEach(({ testName }) => {
+        const formattedTestName = testName.replace(/\s+/g, "-"); // Convert spaces to dashes
+
+        // Find the correct video file
+        const matchingVideo = videoFiles.find((file) => file.startsWith(formattedTestName));
+
+        if (matchingVideo) {
+            const source = path.join(videoDir, matchingVideo);
+            const destination = path.join(allureDir, matchingVideo);
+
+            // Wait for FFmpeg to complete
+            let attempts = 0;
+            while (fs.statSync(source).size === 0 && attempts < 10) {
+                console.log(`⏳ Waiting for video to render: ${matchingVideo}`);
+                attempts++;
+                Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1000); // Sleep for 1 second
+            }
+
+            if (fs.statSync(source).size > 0) {
+                fs.copyFileSync(source, destination);
+                console.log(`📹 Copied video: ${source} -> ${destination}`);
+
+                // Attach video to Allure
+                addAttachment("Test Video", fs.readFileSync(destination), "video/mp4");
+                console.log(`✅ Attached video to Allure: ${matchingVideo}`);
+            } else {
+                console.warn(`⚠️ Skipping empty video file: ${source}`);
+            }
+        } else {
+            console.warn(`⚠️ No matching video found for test: ${testName}`);
+        }
+    });
+
+
+
+
 name: WDIO Tests
 
 on:
