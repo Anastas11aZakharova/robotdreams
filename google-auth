@@ -1,4 +1,107 @@
-    if (fs.existsSync(resultsFilePath)) {
+function formatTestResults() {
+    const rawData: string = fs.readFileSync("./testResults.json", "utf-8");
+    const jsonObjects: TestResult[] = JSON.parse(rawData);
+
+    jsonObjects.sort((a, b) => {
+        if (a.specFile !== b.specFile) {
+            return a.specFile.localeCompare(b.specFile);
+        }
+        return a.testName.localeCompare(b.testName);
+    });
+
+    // Group retries by test name and spec file
+    const testResultsMap = new Map<string, TestResult>();
+
+    jsonObjects.forEach((result) => {
+        const key = `${result.specFile}::${result.testName}`;
+        if (!testResultsMap.has(key) || result.passed) {
+            testResultsMap.set(key, result); // Keep the first successful attempt or the latest failure
+        }
+    });
+
+    const uniqueResults = Array.from(testResultsMap.values()); // Keep only the deduplicated results
+
+    const totalTests = uniqueResults.length;
+    const passedTests = uniqueResults.filter((result) => result.passed);
+    const failedTests = uniqueResults.filter((result) => !result.passed);
+
+    const passedTestsFormatted = passedTests
+        .map(
+            (result) =>
+                `📝 \\tests\\specs\\${result.specFile} → ${result.testName}`
+        )
+        .join("\n");
+
+    const failedTestsFormatted = failedTests
+        .map(
+            (result) =>
+                `📝 \\tests\\specs\\${result.specFile} → ${result.testName}\n   📌 Failure: ${formatError(result.error)}`
+        )
+        .join("\n");
+
+    return `📝 Test Results:
+📊 Total: ${totalTests}
+✅ Passed: ${passedTests.length}
+❌ Failed: ${failedTests.length}
+
+✅ Passed Tests:
+${passedTestsFormatted}
+
+❌ Failed Tests:
+${failedTestsFormatted}
+`.replace(/:ru:/g, '');
+}
+
+export const config: Options.Testrunner = {
+    mochaOpts: {
+        ui: "bdd",
+        timeout: 600000,
+        retries: 3
+    },
+    afterTest: async function (
+        test,
+        context,
+        { error, result, duration, passed, retries }
+    ) {
+        let testResults: Array<TestResult> = [];
+
+        const specFile = test.file.match(/[^\\/]+\.spec\.ts$/)?.[0] || "";
+        const testName = test.title;
+        const testKey = `${specFile}::${testName}`;
+
+        if (fs.existsSync(resultsFilePath)) {
+            const rawData = fs.readFileSync(resultsFilePath, "utf-8");
+            if (rawData.trim()) {
+                testResults = JSON.parse(rawData);
+            }
+        }
+
+        // Remove previous attempts of the same test to store only the latest failure or first success
+        testResults = testResults.filter((t) => `${t.specFile}::${t.testName}` !== testKey);
+
+        testResults.push({
+            specFile,
+            testName,
+            passed,
+            error: error?.message,
+        });
+
+        fs.writeFileSync(
+            resultsFilePath,
+            JSON.stringify(testResults, null, 2),
+            "utf-8"
+        );
+
+        if (error) {
+            await browser.takeScreenshot();
+        }
+    }
+};
+
+
+
+=---------
+if (fs.existsSync(resultsFilePath)) {
         const rawData = fs.readFileSync(resultsFilePath, "utf-8");
         if (rawData.trim()) {
             testResults = JSON.parse(rawData);
