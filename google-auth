@@ -1,4 +1,4 @@
-'You’ve been invited to join Hipp QA on Hipp.Set up your account:https://renewed-spring-67-staging.authkit.app/invite/?invitation_token=LHryPk2BPnuh0LThClqXmoZEI---This invitation expires in 7 days.Email sent by WorkOS on behalf of Hipp.---If you didn’t request to join Hipp QA, you can safelyignore this email. Someone else might have typed your emailaddress by mistake.'
+const match = body.match(/https:\/\/renewed-spring-67-staging\.authkit\.app\/invite\/\?invitation_token=[a-zA-Z0-9_-]+/);
     
 
 import { google } from 'googleapis';
