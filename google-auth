@@ -1,3 +1,89 @@
+import { google } from 'googleapis';
+import fs from 'fs';
+import readline from 'readline/promises';
+import open from 'open';
+
+const SCOPES = ['https://www.googleapis.com/auth/gmail.readonly'];
+
+const CREDENTIALS_PATH = './credentials.json'; // no `path` usage
+const TOKEN_PATH = './token.json';
+
+export async function getLatestEmailCode(): Promise<string | null> {
+  const auth = await authorize();
+  const gmail = google.gmail({ version: 'v1', auth });
+
+  const res = await gmail.users.messages.list({
+    userId: 'me',
+    q: 'subject:Your Activation Code', // Adjust as needed
+    maxResults: 1,
+  });
+
+  const message = res.data.messages?.[0];
+  if (!message?.id) return null;
+
+  const email = await gmail.users.messages.get({
+    userId: 'me',
+    id: message.id,
+    format: 'full',
+  });
+
+  const data = email.data.payload?.parts?.find(p => p.mimeType === 'text/plain')?.body?.data
+    || email.data.payload?.body?.data;
+
+  if (!data) return null;
+
+  const decoded = Buffer.from(data, 'base64').toString('utf-8');
+  const match = decoded.match(/Code:\s*(\d{6})/); // Customize this
+  return match?.[1] || null;
+}
+
+async function authorize() {
+  const credentials = JSON.parse(fs.readFileSync(CREDENTIALS_PATH, 'utf-8'));
+  const { client_secret, client_id, redirect_uris } = credentials.installed;
+
+  const oAuth2Client = new google.auth.OAuth2(
+    client_id, client_secret, redirect_uris[0]
+  );
+
+  if (fs.existsSync(TOKEN_PATH)) {
+    const token = JSON.parse(fs.readFileSync(TOKEN_PATH, 'utf-8'));
+    oAuth2Client.setCredentials(token);
+    return oAuth2Client;
+  }
+
+  // Skip interactive login in CI
+  if (process.env.CI === 'true') {
+    throw new Error('Missing token.json in CI environment');
+  }
+
+  // Local: do interactive OAuth once
+  const authUrl = oAuth2Client.generateAuthUrl({
+    access_type: 'offline',
+    scope: SCOPES,
+  });
+
+  console.log('Opening browser for Gmail API authorization...');
+  await open(authUrl);
+
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  const code = await rl.question('Enter the code from the browser: ');
+  rl.close();
+
+  const token = (await oAuth2Client.getToken(code)).tokens;
+  oAuth2Client.setCredentials(token);
+
+  fs.writeFileSync(TOKEN_PATH, JSON.stringify(token));
+  console.log('Token stored to', TOKEN_PATH);
+
+  return oAuth2Client;
+}
+
+
+_____________
 function formatTestResults() {
     const rawData: string = fs.readFileSync("./testResults.json", "utf-8");
     const jsonObjects: TestResult[] = JSON.parse(rawData);
